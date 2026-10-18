@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 """Local SQLite strategy, run and configuration store."""
 import sqlite3, json
 from datetime import datetime, timezone
@@ -14,10 +16,17 @@ class Store:
             CREATE TABLE IF NOT EXISTS fills(id INTEGER PRIMARY KEY, run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE, date TEXT NOT NULL, side TEXT NOT NULL, price REAL NOT NULL, quantity REAL NOT NULL, pnl REAL);
             ''')
             d.execute('PRAGMA foreign_keys=ON')
+    @contextmanager
     def db(self):
-        c=sqlite3.connect(self.path)
-        c.execute('PRAGMA foreign_keys=ON')
-        return c
+        connection = sqlite3.connect(self.path)
+        try:
+            connection.execute("PRAGMA foreign_keys=ON")
+
+            with connection:
+                yield connection
+
+        finally:
+            connection.close()
     def save_strategy(self,name,source,settings):
         name=name.strip()
         if not name: raise ValueError('Strategy name cannot be empty')

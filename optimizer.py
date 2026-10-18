@@ -27,7 +27,7 @@ def apply(source, params, genes):
         source=source[:p.start]+f'{x:.4f}'.rstrip('0').rstrip('.')+source[p.end:]
     return source
 
-def optimise(source,bars,initial=10000,fee=.001,periods_per_year=252,population=12,generations=8,objective='return',seed=7,callback=None):
+def optimise(source,bars,initial=10000,fee=.001,periods_per_year=252,slippage=0.0,allocation=1.0,population=12,generations=8,objective='return',seed=7,callback=None):
     params=parameters(source)
     if not params: raise ValueError('No numeric comparison thresholds to optimise')
     if len(params)>10: raise ValueError('Optimisation supports at most 10 thresholds at once')
@@ -39,7 +39,7 @@ def optimise(source,bars,initial=10000,fee=.001,periods_per_year=252,population=
         key=tuple(round(x,5) for x in genes)
         if key not in cache:
             try:
-                result=backtest(apply(source,params,genes),bars,initial=initial,fee=fee,periods_per_year=periods_per_year)
+                result=backtest(apply(source,params,genes),bars,initial=initial,fee=fee,periods_per_year=periods_per_year,slippage=slippage,allocation=allocation)
                 fitness=result['sharpe'] if objective=='sharpe' else result['total_return']
                 cache[key]=(fitness,result)
             except (ValueError,ZeroDivisionError): cache[key]=(-float('inf'),None)

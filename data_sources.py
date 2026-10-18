@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+from contextlib import contextmanager
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, date, timedelta, timezone
@@ -82,7 +83,7 @@ class BinanceArchive:
         bars = []
         for month in months:
             following = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
-            if following < today.replace(day=1) or (following == today.replace(day=1) and today.day >= 8):
+            if (req.end-req.start).days > 3 and (following < today.replace(day=1) or (following == today.replace(day=1) and today.day >= 8)):
                 periods = [('monthly', month.strftime('%Y-%m'))]
             else:
                 d = max(req.start, month)
@@ -152,7 +153,14 @@ class CandleCache:
                 provider TEXT NOT NULL, market TEXT NOT NULL, symbol TEXT NOT NULL,
                 timeframe TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL,
                 PRIMARY KEY (provider, market, symbol, timeframe, start_date, end_date))''')
-    def connect(self): return sqlite3.connect(self.path)
+    @contextmanager
+    def connect(self):
+        connection = sqlite3.connect(self.path)
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
     def save(self, provider, req, bars):
         with self.connect() as db:
             db.executemany('''INSERT OR REPLACE INTO candles VALUES(?,?,?,?,?,?,?,?,?,?)''',
