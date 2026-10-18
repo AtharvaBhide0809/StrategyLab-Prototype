@@ -1,4 +1,4 @@
-"""Historical daily-bar backtesting. Signals at close, filled at NEXT day's open."""
+"""Historical OHLCV backtesting. Signals at close, filled at NEXT bar open."""
 import csv
 import math
 from datetime import datetime
@@ -8,11 +8,11 @@ def load_csv(path):
     with open(path, newline='', encoding='utf-8-sig') as f:
         bars = []
         for row in csv.DictReader(f):
-            bars.append({'date': datetime.strptime(row['Date'], '%Y-%m-%d').date(),
+            bars.append({'date': row['Date'],
                          **{k.lower(): float(row[k]) for k in ('Open','High','Low','Close','Volume')}})
     bars.sort(key=lambda r: r['date'])
     if len(bars) < 35 or len({r['date'] for r in bars}) != len(bars):
-        raise ValueError('CSV needs 35+ unique daily records')
+        raise ValueError('CSV needs 35+ unique timestamp records')
     if any(b['open'] <= 0 or b['close'] <= 0 or b['high'] < b['low'] for b in bars):
         raise ValueError('Invalid OHLC prices in CSV')
     return bars
@@ -67,8 +67,9 @@ def indicators(bars, names):
         data['MACD_SIGNAL']=[None]*(len(macd)-len(valid))+signal
     return data
 
-def backtest(source, bars, initial=10000.0, fee=0.001):
-    if initial <= 0 or not 0 <= fee < 1: raise ValueError('Invalid capital or fee')
+def backtest(source, bars, initial=10000.0, fee=0.001, periods_per_year=252, slippage=0.0, allocation=1.0):
+    if len(bars) < 35: raise ValueError("At least 35 candles are required")
+    if initial <= 0 or not 0 <= fee < 1 or not 0 <= slippage < 1 or not 0 < allocation <= 1: raise ValueError('Invalid capital, fee, slippage or allocation')
     rules = parse_strategy(source)
     names = needed_fields(rules['BUY']) | needed_fields(rules['SELL'])
     series = indicators(bars, names)
@@ -81,13 +82,13 @@ def backtest(source, bars, initial=10000.0, fee=0.001):
             # Don't execute any rule until its indicators have warmed up.
             if all(series[name][i-1] is not None for name in names):
                 if shares == 0 and evaluate(rules['BUY'], vals):
-                    price=b['open']; qty=cash/(price*(1+fee))
+                    price=b['open']*(1+slippage); budget=cash*allocation; qty=budget/(price*(1+fee))
                     if qty > 0:
-                        entry_cost=cash; shares=qty; cash=0.0
+                        entry_cost=budget; shares=qty; cash-=budget
                         trades.append({'date': str(b['date']), 'side':'BUY', 'price':price, 'quantity':qty, 'pnl':None})
                 elif shares > 0 and evaluate(rules['SELL'], vals):
-                    price=b['open']; proceeds=shares*price*(1-fee)
-                    cash=proceeds
+                    price=b['open']*(1-slippage); proceeds=shares*price*(1-fee)
+                    cash+=proceeds
                     trades.append({'date':str(b['date']), 'side':'SELL', 'price':price, 'quantity':shares, 'pnl':proceeds-entry_cost})
                     shares=0.0; entry_cost=None
         equity.append(cash+shares*b['close'])
@@ -99,7 +100,7 @@ def backtest(source, bars, initial=10000.0, fee=0.001):
     daily=[equity[i]/equity[i-1]-1 for i in range(1,len(equity))]
     mean=sum(daily)/len(daily)
     std=math.sqrt(sum((x-mean)**2 for x in daily)/(len(daily)-1)) if len(daily)>1 else 0
-    sharpe=mean/std*math.sqrt(252) if std>0 else 0
+    sharpe=mean/std*math.sqrt(periods_per_year) if std>0 else 0
     sells=[t for t in trades if t['side']=='SELL']
     return {'equity':equity, 'dates':[str(b['date']) for b in bars], 'trades':trades,
             'total_return':ret, 'buy_hold':bh, 'max_drawdown':min(drawdowns),

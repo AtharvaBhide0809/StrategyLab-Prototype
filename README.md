@@ -1,59 +1,96 @@
-# StrategyLab — A-level NEA working prototype
+# StrategyLab Reference v1.0
 
-This is a **teaching prototype**, not trading or investment software.
+**AI-generated / AI-assisted learning reference, not independently authored OCR NEA submission.**
 
-## Start on Windows / macOS / Linux
+A PyQt6 desktop prototype demonstrating a rule-driven historical market backtester, a simple genetic optimiser and a TradingView-inspired layout. The synthetic dataset is intentionally **not real market data**. No live orders are placed.
 
-Install Python 3.12. From this folder, run:
+## Quick start (Windows / VS Code)
 
-```bash
+1. Extract this archive somewhere outside your existing Git repository first.
+2. Open the `StrategyLab_Reference_v1.0` folder in VS Code.
+3. In the terminal run:
+
+```powershell
 python -m pip install -r requirements.txt
 python app.py
 ```
 
-Run core tests without installing a GUI library:
+Python 3.11 or newer is recommended. If the first launch fails, copy the **entire traceback** from VS Code. The desktop GUI has not been interactively verified in the build environment; underlying tests were executed.
 
-```bash
-python -m unittest test_core.py -v
+## Main workflow
+
+1. On **Dashboard**, run the demo rules against bundled synthetic data.
+2. On **Strategy editor**, create `BUY IF ...` and `SELL IF ...` rules, validate and save them.
+3. On **Parameters**, set starting cash, per-order fees, slippage and fraction invested.
+4. On **Dashboard**, download Binance crypto spot historical data or Alpaca US stock IEX data. Select range, ticker and timeframe. Use Offline if already cached.
+5. On **Optimisation**, optimise numeric thresholds (e.g. RSI < 30) using a small genetic search.
+6. Use **Saved strategies** to restore and delete definitions; **History** records summary stats for each completed run.
+7. Trade events are marked on the candlestick chart and listed in **Trade log**.
+
+The provider adapters use `urllib` only. Alpaca needs free historical market-data API credentials:
+
+```powershell
+$env:APCA_API_KEY_ID = "YOUR_KEY"
+$env:APCA_API_SECRET_KEY = "YOUR_SECRET"
+python app.py
 ```
 
-If needed, recreate the included **synthetic** demonstration dataset:
+Never commit tokens or `.env` files. The user data directory is excluded by `.gitignore`. Binance data archive behaviour and Alpaca API limits may change. Data providers are not guaranteed available everywhere.
 
-```bash
-python create_demo.py
+## Python modules
+
+| Module | Purpose |
+|---|---|
+| `strategy.py` | Custom lexer, recursive descent parser with AND/OR/NOT precedence, AST nodes, safe evaluator |
+| `engine.py` | CSV loading, native SMA/EMA/Wilder RSI/MACD, chronological next-open trading simulation, performance metrics |
+| `data_sources.py` | Binance public ZIP archives, Alpaca IEX HTTP requests, UTC-normalised OHLCV candles, SQLite caching |
+| `storage.py` | SQLite profiles, saved strategy sources, runs and execution records |
+| `optimizer.py` | Population, ranking, elite preservation, crossover, mutation, optimisation progress; modifies numerical **comparison thresholds**, not indicator periods |
+| `app.py` | PyQt6 stacked-pages UI, async provider fetch and optimiser threads, Matplotlib plots |
+| `test_*.py` | Unit tests for parsing, backtesting, providers, cache, optimiser and persistence |
+
+## Running tests
+
+```powershell
+python -m unittest discover -p "test_*.py" -v
 ```
 
-## Input language
+## Limitations and missing/partial NEA features
 
-One `BUY IF` line and one `SELL IF` line. `AND`, `OR`, `NOT`, parentheses, numeric comparisons and indicators `CLOSE`, `VOLUME`, `RSI`, `RSI_14`, `SMA_20` (any positive integer period), `MACD`, and `MACD_SIGNAL` are supported. Keywords are case insensitive. `RSI` means RSI with period 14. Examples:
+This is an **integrated reference milestone**, not a verified feature-complete product. Important gaps relative to the Analysis:
 
+- **No custom formula indicator parser** or indicator weighting editor; built-in RSI, SMA, MACD and raw Volume are supported.
+- **No configurable genetic search bounds UI**, multi-objective fitness or automated out-of-sample validation. Parameter search changes numeric rule thresholds only. It cannot optimise indicator *periods* yet.
+- **Basic error handling only**; live debounced syntax checking is implemented, but automatic spelling suggestions and semantic linter are not comprehensive.
+- **Trade log is a list of fills**, not matched position-level entry/exit rows; sorting/filtering and clicking fills to highlight candles are not yet implemented.
+- **Performance metrics are simplified.** Sharpe uses naive per-candle annualisation and risk-free rate 0; stocks do not comprehensively account for irregular exchange sessions. Fees, slippage and fraction of available cash are modelled, but spreads, market impact, splits and dividends are not.
+- **Buy-and-Hold comparison excludes trading fees**, and includes its own simplified price assumptions.
+- **Unrealised open positions remain open at the end**, and realised win rate counts closing sells only.
+- **Candlestick chart samples bars** for rendering speed at large data sizes. Markers are placed using original timestamp indices.
+- **Market data is retrieved online then cached for offline runs**; only cached intervals can be used fully offline. Some API/archive gaps, data quality and provider restrictions are expected.
+- **The UI is a dark-theme functional first pass**, not a pixel-matched TradingView clone. No standalone EXE is included. Package manually with PyInstaller if desired.
+- **No claim of achieving NEA timing targets, 3NF proof, mathematical reference accuracy or full integration on Windows**. Those require additional tests.
+
+## How to put it into your reference repository
+
+Keep your existing local reference prototype safely committed. Unzip elsewhere first, inspect changes, then **copy the contents of this folder** into your local `StrategyLab-Prototype` repository (not into `StrategyLab-NEA`). Existing source filenames will be replaced. It is safest to create a temporary Git branch:
+
+```powershell
+cd "$HOME\Documents\Computer Science NEA\StrategyLab-Prototype"
+git status
+git switch -c reference-v1
+# Copy in the extracted new files from File Explorer.
+python -m pip install -r requirements.txt
+python -m unittest discover -p "test_*.py" -v
+python app.py
+# After testing and checking the result:
+git add .
+git commit -m "Add integrated StrategyLab reference v1.0"
+git push -u origin reference-v1
 ```
-BUY IF RSI < 30 OR CLOSE > SMA_20
-SELL IF RSI > 70
-```
 
-## Historical CSV format
+No code in this archive modifies your repository or GitHub account by itself.
 
-`Date,Open,High,Low,Close,Volume` with ISO dates such as `2024-02-01`, and at least 35 unique rows. Import a real historic OHLCV file through the GUI if desired. The included data is *fabricated* and serves only to demonstrate code execution.
+## AI and coursework provenance
 
-## Simplifications and limitations
-
-- **Daily bars, not genuine intraday/day-trading data.** No live prices or broker connections.
-- Signals are based on bar close; trades execute at the *following bar's open*. This eliminates the most basic same-bar lookahead error.
-- Long only, one full-capital position at a time, fractional shares, fixed 0.1% entry and exit commission; no shorting, leverage, slippage or dividends.
-- MACD uses 12/26 EMAs and 9 EMA signal; RSI uses Wilder smoothing.
-- Trade logs show realised P/L only on sells; an open position remains marked to market at final close.
-- Buy-and-hold uses first to last closing price and excludes fees; this is an illustrative comparison, not a matching execution model.
-- Sharpe uses daily equity returns, zero risk-free rate, 252 annualisation and sample volatility.
-- The app does *not yet* have SQLite persistence, online downloads/cache, genetic optimisation, live syntax suggestions, or ticker lookups. These are sensible follow-up iterations for the NEA.
-- Indicator values that have not finished their warm-up period suppress both entry and exit checks.
-
-## Layout
-
-- `strategy.py`: lexer, recursive-descent parser, AST and evaluator
-- `engine.py`: OHLCV loading, native-Python indicator algorithms, simulation and performance metrics
-- `app.py`: PyQt6/Matplotlib interface
-- `create_demo.py`: deterministic synthetic OHLCV dataset generator
-- `test_core.py`: reproducible initial unit tests
-
-Read and understand all code before incorporating it into assessed work. Document design decisions, your own changes and your testing honestly.
+This entire reference application builds on the AI-generated v0.1/v0.2 demonstrations with further AI-generated modules. It is for reference, learning and experimentation. Keep a record of the prompts, generated artifacts, and any assistance or code actually reused in assessed work. The separate NEA repository should be independently authored and comply with your teacher's/OCR's authentication rules.
