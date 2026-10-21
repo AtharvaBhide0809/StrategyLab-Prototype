@@ -50,22 +50,49 @@ def rsi(series, n=14):
         out[i]=score(ag,al)
     return out
 
-def indicators(bars, names):
-    closes = [b['close'] for b in bars]
-    data = {'CLOSE': closes, 'VOLUME': [b['volume'] for b in bars]}
-    for name in names:
-        if name.startswith('SMA_'):
-            data[name] = sma(closes, int(name.split('_')[1]))
-        if name == 'RSI' or name.startswith('RSI_'):
-            data[name] = rsi(closes, 14 if name == 'RSI' else int(name.split('_')[1]))
-    if 'MACD' in names or 'MACD_SIGNAL' in names:
-        e12,e26=ema(closes,12),ema(closes,26)
+class Indicator:
+    """Extensible, deterministic indicator interface (subclass and register)."""
+    name = None
+    def matches(self, name):
+        return name == self.name
+    def calculate(self, bars, name, cache):
+        raise NotImplementedError
+
+class MovingAverageIndicator(Indicator):
+    def matches(self,name): return name.startswith('SMA_')
+    def calculate(self,bars,name,cache):return sma(cache['CLOSE'],int(name.split('_')[-1]))
+
+class RelativeStrengthIndicator(Indicator):
+    def matches(self,name):return name=='RSI' or name.startswith('RSI_')
+    def calculate(self,bars,name,cache):return rsi(cache['CLOSE'],14 if name=='RSI' else int(name.split('_')[-1]))
+
+class VolumeMovingAverageIndicator(Indicator):
+    def matches(self,name):return name.startswith('VOLUME_SMA_')
+    def calculate(self,bars,name,cache):return sma(cache['VOLUME'],int(name.split('_')[-1]))
+
+class MACDIndicator(Indicator):
+    def matches(self,name):return name in ('MACD','MACD_SIGNAL')
+    def calculate(self,bars,name,cache):
+        e12,e26=ema(cache['CLOSE'],12),ema(cache['CLOSE'],26)
         macd=[a-b if a is not None and b is not None else None for a,b in zip(e12,e26)]
-        data['MACD']=macd
+        if name=='MACD':return macd
         valid=[x for x in macd if x is not None]
-        signal=ema(valid,9)
-        data['MACD_SIGNAL']=[None]*(len(macd)-len(valid))+signal
-    return data
+        return [None]*(len(macd)-len(valid))+ema(valid,9)
+
+INDICATOR_REGISTRY=[MovingAverageIndicator(),RelativeStrengthIndicator(),VolumeMovingAverageIndicator(),MACDIndicator()]
+
+def register_indicator(indicator):
+    if not isinstance(indicator,Indicator):raise TypeError('Expected Indicator subclass')
+    INDICATOR_REGISTRY.insert(0,indicator)
+
+def indicators(bars,names):
+    cache={'CLOSE':[b['close'] for b in bars], 'VOLUME':[b['volume'] for b in bars]}
+    for name in names:
+        if name in cache:continue
+        handler=next((item for item in INDICATOR_REGISTRY if item.matches(name)),None)
+        if handler is None:raise ValueError(f'Unknown indicator: {name}')
+        cache[name]=handler.calculate(bars,name,cache)
+    return cache
 
 def annualisation_periods(asset_type='crypto', timeframe='1d'):
     """Approximate periodic samples/year, assuming regular 24/7 crypto or US cash sessions."""
@@ -80,11 +107,13 @@ def annualisation_periods(asset_type='crypto', timeframe='1d'):
 
 
 def backtest(source, bars, initial=10000.0, fee=0.001, periods_per_year=None,
-             slippage=0.0, allocation=1.0, asset_type='crypto', timeframe='1d'):
+             slippage=0.0, allocation=1.0, asset_type='crypto', timeframe='1d', trading_start=0):
     if periods_per_year is None:
         periods_per_year = annualisation_periods(asset_type, timeframe)
     if not math.isfinite(periods_per_year) or periods_per_year <= 0:
         raise ValueError('periods_per_year must be positive and finite')
+    if not isinstance(trading_start, int) or not 0 <= trading_start < len(bars):
+        raise ValueError('Invalid trading_start index')
     if len(bars) < 35: raise ValueError("At least 35 candles are required")
     if initial <= 0 or not 0 <= fee < 1 or not 0 <= slippage < 1 or not 0 < allocation <= 1: raise ValueError('Invalid capital, fee, slippage or allocation')
     rules = parse_strategy(source)
@@ -97,7 +126,7 @@ def backtest(source, bars, initial=10000.0, fee=0.001, periods_per_year=None,
     completed_trades = []
     # Decision on yesterday's close; fill at today's open, avoiding close-lookahead bias.
     for i,b in enumerate(bars):
-        if i > 0:
+        if i > 0 and i >= trading_start:
             vals={name: col[i-1] for name,col in series.items()}
             # Don't execute any rule until its indicators have warmed up.
             if all(series[name][i-1] is not None for name in names):
@@ -116,6 +145,8 @@ def backtest(source, bars, initial=10000.0, fee=0.001, periods_per_year=None,
                         'pnl':pnl,'return_pct':100*pnl/entry_cost})
                     shares=0.0; entry_cost=None; entry_date=None; entry_price=None
         equity.append(cash+shares*b['close'])
+    # The trading_start gate skips warmup-only execution, not indicator calculation.
+    # Return the full trace for charting; validation isolates the evaluation window.
     ret=(equity[-1]/initial-1)*100
     bh=(bars[-1]['close']/bars[0]['close']-1)*100
     peak=equity[0]; drawdowns=[]

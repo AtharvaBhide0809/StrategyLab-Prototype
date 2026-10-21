@@ -1,6 +1,7 @@
 """Small, safe strategy language: no eval() or execution of user Python."""
 from dataclasses import dataclass
 import re
+import difflib
 
 TOKEN = re.compile(r'\s*(>=|<=|==|!=|[()<>]|\bAND\b|\bOR\b|\bNOT\b|[A-Za-z_][A-Za-z_0-9]*|\d+(?:\.\d+)?)', re.I)
 
@@ -70,9 +71,12 @@ class Parser:
         t = self.take()
         if re.fullmatch(r'\d+(?:\.\d+)?', t):
             return Node('CONST', float(t))
-        if t in ('CLOSE', 'RSI', 'MACD', 'MACD_SIGNAL', 'VOLUME') or re.fullmatch(r'SMA_[1-9]\d*|RSI_[1-9]\d*', t):
+        if t in ('CLOSE', 'RSI', 'MACD', 'MACD_SIGNAL', 'VOLUME') or re.fullmatch(r'SMA_[1-9]\d*|RSI_[1-9]\d*|VOLUME_SMA_[1-9]\d*', t):
             return Node('FIELD', t)
-        raise StrategyError(f'Unknown indicator {t!r}. Try CLOSE, RSI, RSI_14, SMA_50, MACD or VOLUME.')
+        options=['CLOSE','RSI','RSI_14','SMA_20','SMA_50','MACD','MACD_SIGNAL','VOLUME','VOLUME_SMA_20']
+        suggestion=difflib.get_close_matches(t,options,n=1,cutoff=.5)
+        note=f" Did you mean {suggestion[0]}?" if suggestion else ''
+        raise StrategyError(f'Unknown indicator {t!r}.{note} Supported examples: RSI, SMA_50, MACD, VOLUME_SMA_20.')
 
 def parse_strategy(source):
     rules = {}
