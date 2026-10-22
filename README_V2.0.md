@@ -72,4 +72,4 @@ Keep all supporting files inside the extracted application folder.
 
 ## Development:
 
-StrategyLab was developed as part of an A-Level Computer Science NEA project, demonstrating GUI development, algorithm design, data handling, database persistence, automated testing and software engineering.
+StrategyLab was developed as part of an A-Level Computer Science NEA project, using an AI-assisted development process involving iterative specification, code review, debugging, testing and validation. The project demonstrates practical applications of GUI development, algorithm design, data handling, database persistence and software engineering principles.
