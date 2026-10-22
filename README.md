@@ -6,6 +6,17 @@ StrategyLab is a desktop application for designing, testing, optimising and anal
 
 This version introduces an expanded graphical interface, advanced analytics, historical-data integration and a packaged Windows application.
 
+## Application Screenshots
+
+### Backtest Dashboard
+![StrategyLab Backtest Dashboard](screenshots/dashboard.png)
+
+### Strategy Analytics
+![StrategyLab Strategy Analytics](screenshots/analytics.png)
+
+### Strategy Editor
+![StrategyLab Strategy Editor](screenshots/strategy-editor.png)
+
 ## Key features:
 
 - **Visual Strategy Editor:** Create and validate trading strategies using structured BUY/SELL rules without writing Python code.
